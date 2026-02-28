@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"mkdir \"\"C:\\\\Users\\\\kdk21\\\\OneDrive\\\\문서\\\\작업파일\\\\DK 작업파일\\\\news_bot\\\\.github\\\\workflows\"\"\")",
+      "Bash(cmd /c \"dir /s /b \"\"C:\\\\Users\\\\kdk21\\\\OneDrive\\\\문서\\\\작업파일\\\\DK 작업파일\\\\news_bot\"\"\")",
+      "Bash(cmd /c \"dir \"\"C:\\\\Users\\\\kdk21\\\\OneDrive\\\\문서\\\\작업파일\\\\DK 작업파일\\\\news_bot\"\" /a\")"
+    ]
+  }
+}
