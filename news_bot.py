@@ -5,7 +5,6 @@
 - 세법 관련 뉴스 TOP 2 (Google News RSS)
 """
 
-import re
 import html
 import os
 import requests
@@ -109,42 +108,6 @@ def get_tax_articles(n=2):
     return articles
 
 
-# ── 기사 본문 2줄 요약 ─────────────────────────────────────────────
-def get_article_summary(url: str) -> str:
-    """기사 URL에서 핵심 2문장 추출"""
-    if not url:
-        return "링크 없음"
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        selectors = [
-            "#newsct_article",
-            "#articleBodyContents",
-            ".newsct_article",
-            "._article_content",
-            "#articeBody",
-        ]
-        for sel in selectors:
-            tag = soup.select_one(sel)
-            if tag:
-                for s in tag.select("script, style, .u_likeit_layer, .reporter_area"):
-                    s.decompose()
-                text = tag.get_text(" ", strip=True)
-                text = " ".join(text.split())
-                if len(text) > 10:
-                    sentences = re.split(r'(?<=[다요임])\. ?', text)
-                    sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
-                    if len(sentences) >= 2:
-                        return f"{sentences[0][:95]}.\n{sentences[1][:95]}."
-                    elif sentences:
-                        return sentences[0][:150]
-    except Exception:
-        pass
-    return "본문을 가져올 수 없습니다."
-
-
 # ── 텔레그램 전송 ──────────────────────────────────────────────────
 def send_telegram(text: str) -> bool:
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -159,18 +122,10 @@ def send_telegram(text: str) -> bool:
 
 
 def send_article(art: dict, label: str = ""):
-    """기사 1개를 텔레그램으로 전송"""
-    summary      = get_article_summary(art["link"])
-    safe_title   = html.escape(art["title"])
-    safe_summary = html.escape(summary)
+    """기사 1개를 텔레그램으로 전송 (제목 + 링크)"""
+    safe_title = html.escape(art["title"])
 
-    msg = (
-        f"<b>[{label}] {safe_title}</b>\n"
-        f"\n"
-        f"{safe_summary}\n"
-        f"\n"
-        f"<a href='{art['link']}'>기사 전문 보기</a>"
-    )
+    msg = f"<b>[{label}]</b> <a href='{art['link']}'>{safe_title}</a>"
     ok = send_telegram(msg)
     print(f"  {'OK' if ok else 'FAIL'} [{label}] {art['title'][:30]}")
 
