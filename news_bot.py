@@ -58,8 +58,17 @@ def get_ranking_articles(section_id=None, n=5):
     return articles
 
 
+def resolve_url(url: str) -> str:
+    """Google News 리다이렉트 URL → 실제 기사 URL 변환"""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=10, allow_redirects=True)
+        return r.url
+    except Exception:
+        return url
+
+
 def get_tax_articles(n=2):
-    """세법 관련 뉴스 - Google News RSS"""
+    """세법 관련 뉴스 - Google News RSS (실제 기사 URL로 변환)"""
     url = "https://news.google.com/rss/search"
     params = {
         "q":    "세법 OR 과세 OR 세금 OR 절세",
@@ -77,12 +86,24 @@ def get_tax_articles(n=2):
         if len(articles) >= n:
             break
         title_tag = item.find("title")
-        guid_tag  = item.find("guid")
+        desc_tag  = item.find("description")
         if not title_tag:
             continue
 
         title = title_tag.get_text(strip=True)
-        link  = guid_tag.get_text(strip=True) if guid_tag else ""
+
+        # description 안의 <a href>에서 Google News 링크 추출
+        link = ""
+        if desc_tag:
+            desc_soup = BeautifulSoup(desc_tag.get_text(), "html.parser")
+            a_tag = desc_soup.find("a")
+            if a_tag:
+                link = a_tag.get("href", "")
+
+        # 리다이렉트를 따라가 실제 기사 URL 획득
+        if link:
+            link = resolve_url(link)
+
         articles.append({"rank": str(len(articles) + 1), "title": title, "link": link})
 
     return articles
