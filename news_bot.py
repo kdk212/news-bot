@@ -1,6 +1,8 @@
 """
-네이버 뉴스 TOP 10 텔레그램 봇
-매시간 많이 본 뉴스 10개를 텔레그램으로 전송합니다.
+네이버 뉴스 텔레그램 봇
+- 많이 본 뉴스 TOP 5
+- 경제/주식 뉴스 TOP 3
+- 세법 관련 뉴스 TOP 2 (Google News RSS)
 """
 
 import re
@@ -10,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-# ── 설정 (GitHub Actions에서는 환경변수, 로컬에서는 직접 입력) ──────
+# ── 설정 ──────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8662493054:AAF8H6VpCBgdDdVtqVkUqjeVnSRgH9mi8ZA")
 CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID",   "694726450")
 
@@ -25,20 +27,22 @@ HEADERS = {
 }
 
 
-# ── 네이버 뉴스 TOP 10 수집 ────────────────────────────────────────
-def get_top10_articles():
-    """네이버 뉴스 '많이 본 뉴스' TOP 10 반환"""
+# ── 뉴스 수집 ──────────────────────────────────────────────────────
+def get_ranking_articles(section_id=None, n=5):
+    """네이버 뉴스 랭킹 페이지에서 상위 N개 수집"""
     url = "https://news.naver.com/main/ranking/popularDay.naver"
+    if section_id:
+        url += f"?sectionId={section_id}"
+
     resp = requests.get(url, headers=HEADERS, timeout=15)
     resp.raise_for_status()
-
     soup = BeautifulSoup(resp.text, "html.parser")
-    articles = []
 
+    articles = []
     for item in soup.select(".rankingnews_list li"):
-        if len(articles) >= 10:
+        if len(articles) >= n:
             break
-        rank_tag = item.select_one(".num")
+        rank_tag  = item.select_one(".num")
         title_tag = item.select_one("a.list_title, a[class*='title']")
         if not title_tag:
             continue
@@ -50,6 +54,36 @@ def get_top10_articles():
             link = "https://news.naver.com" + link
 
         articles.append({"rank": rank, "title": title, "link": link})
+
+    return articles
+
+
+def get_tax_articles(n=2):
+    """세법 관련 뉴스 - Google News RSS"""
+    url = "https://news.google.com/rss/search"
+    params = {
+        "q":    "세법 OR 과세 OR 세금 OR 절세",
+        "hl":   "ko",
+        "gl":   "KR",
+        "ceid": "KR:ko",
+    }
+    headers = {**HEADERS, "Referer": "https://news.google.com"}
+    resp = requests.get(url, params=params, headers=headers, timeout=15)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "xml")
+
+    articles = []
+    for item in soup.find_all("item"):
+        if len(articles) >= n:
+            break
+        title_tag = item.find("title")
+        guid_tag  = item.find("guid")
+        if not title_tag:
+            continue
+
+        title = title_tag.get_text(strip=True)
+        link  = guid_tag.get_text(strip=True) if guid_tag else ""
+        articles.append({"rank": str(len(articles) + 1), "title": title, "link": link})
 
     return articles
 
@@ -82,12 +116,9 @@ def get_article_summary(url: str) -> str:
                     sentences = re.split(r'(?<=[다요임])\. ?', text)
                     sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
                     if len(sentences) >= 2:
-                        line1 = sentences[0][:95]
-                        line2 = sentences[1][:95]
-                        return f"{line1}.\n{line2}."
+                        return f"{sentences[0][:95]}.\n{sentences[1][:95]}."
                     elif sentences:
                         return sentences[0][:150]
-
     except Exception:
         pass
     return "본문을 가져올 수 없습니다."
@@ -95,7 +126,6 @@ def get_article_summary(url: str) -> str:
 
 # ── 텔레그램 전송 ──────────────────────────────────────────────────
 def send_telegram(text: str) -> bool:
-    """텔레그램 메시지 전송"""
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -107,42 +137,53 @@ def send_telegram(text: str) -> bool:
     return resp.ok
 
 
+def send_article(art: dict, label: str = ""):
+    """기사 1개를 텔레그램으로 전송"""
+    summary      = get_article_summary(art["link"])
+    safe_title   = html.escape(art["title"])
+    safe_summary = html.escape(summary)
+
+    msg = (
+        f"<b>[{label}] {safe_title}</b>\n"
+        f"\n"
+        f"{safe_summary}\n"
+        f"\n"
+        f"<a href='{art['link']}'>기사 전문 보기</a>"
+    )
+    ok = send_telegram(msg)
+    print(f"  {'OK' if ok else 'FAIL'} [{label}] {art['title'][:30]}")
+
+
 # ── 메인 ───────────────────────────────────────────────────────────
 def main():
-    now = datetime.now()
-    now_str = now.strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"[{now_str}] 뉴스 수집 시작")
 
-    articles = get_top10_articles()
-    if not articles:
-        send_telegram("뉴스를 가져오지 못했습니다.")
-        return
+    popular = get_ranking_articles(section_id=None, n=5)   # 많이 본 뉴스 TOP 5
+    economy = get_ranking_articles(section_id=101,  n=3)   # 경제 섹션 TOP 3
+    tax     = get_tax_articles(n=2)                         # 세법 뉴스 TOP 2
 
-    header = (
-        f"<b>네이버 많이 본 뉴스 TOP 10</b>\n"
-        f"{now_str}\n"
+    send_telegram(
+        f"<b>뉴스 브리핑</b>  {now_str}\n"
         f"{'─' * 26}"
     )
-    send_telegram(header)
 
-    for art in articles:
-        summary = get_article_summary(art["link"])
+    send_telegram("📰 <b>많이 본 뉴스 TOP 5</b>")
+    for art in popular:
+        send_article(art, label=f"{art['rank']}위")
 
-        # HTML 특수문자 이스케이프 (텔레그램 파싱 오류 방지)
-        safe_title   = html.escape(art["title"])
-        safe_summary = html.escape(summary)
+    send_telegram("💹 <b>경제/주식 뉴스 TOP 3</b>")
+    for i, art in enumerate(economy, 1):
+        send_article(art, label=f"경제 {i}위")
 
-        msg = (
-            f"<b>[{art['rank']}위] {safe_title}</b>\n"
-            f"\n"
-            f"{safe_summary}\n"
-            f"\n"
-            f"<a href='{art['link']}'>기사 전문 보기</a>"
-        )
-        ok = send_telegram(msg)
-        print(f"  {'OK' if ok else 'FAIL'} {art['rank']}위")
+    send_telegram("⚖️ <b>세법 관련 뉴스</b>")
+    if tax:
+        for i, art in enumerate(tax, 1):
+            send_article(art, label=f"세법 {i}")
+    else:
+        send_telegram("오늘 세법 관련 뉴스가 없습니다.")
 
-    send_telegram("TOP 10 전송 완료")
+    send_telegram("✅ 뉴스 브리핑 완료")
     print("전송 완료")
 
 
