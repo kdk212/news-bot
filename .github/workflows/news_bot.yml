@@ -1,0 +1,31 @@
+name: 네이버 뉴스 TOP 10 텔레그램 봇
+
+on:
+  schedule:
+    # 한국시간 08:00~23:00 매시간 (KST = UTC+9)
+    # KST 08:00 = UTC 23:00,  KST 23:00 = UTC 14:00
+    - cron: "0 23,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 * * *"
+  workflow_dispatch:   # 수동 실행 버튼
+
+jobs:
+  send-news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 뉴스 봇 실행
+        run: python news_bot.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
