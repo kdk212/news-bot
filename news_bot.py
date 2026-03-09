@@ -3,7 +3,8 @@
 - 많이 본 뉴스 TOP 7
 - 경제/주식 뉴스 TOP 5
 - 미국 주식 관련 뉴스 TOP 3 (Google News RSS)
-→ 세 섹션을 하나의 메시지로 전송
+- 국제경제/통상정책 뉴스 TOP 5 (Google News RSS)
+→ 네 섹션을 하나의 메시지로 전송 (개인 + 그룹 채팅)
 """
 
 import html
@@ -14,7 +15,10 @@ from datetime import datetime
 
 # ── 설정 ──────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8662493054:AAF8H6VpCBgdDdVtqVkUqjeVnSRgH9mi8ZA")
-CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID",   "694726450")
+CHAT_IDS = [
+    os.environ.get("TELEGRAM_CHAT_ID", "694726450"),   # 개인
+    "-1003511255398",                                   # 그룹
+]
 
 HEADERS = {
     "User-Agent": (
@@ -67,11 +71,11 @@ def resolve_url(url: str) -> str:
         return url
 
 
-def get_us_stock_articles(n=3):
-    """미국 주식 관련 뉴스 - Google News RSS (실제 기사 URL로 변환)"""
+def get_google_news_articles(query: str, n: int):
+    """Google News RSS에서 키워드 검색 후 상위 N개 수집"""
     url = "https://news.google.com/rss/search"
     params = {
-        "q":    "미국 주식 OR 나스닥 OR S&P500 OR 다우존스 OR 뉴욕증시",
+        "q":    query,
         "hl":   "ko",
         "gl":   "KR",
         "ceid": "KR:ko",
@@ -92,7 +96,6 @@ def get_us_stock_articles(n=3):
 
         title = title_tag.get_text(strip=True)
 
-        # description 안의 <a href>에서 Google News 링크 추출
         link = ""
         if desc_tag:
             desc_soup = BeautifulSoup(desc_tag.get_text(), "html.parser")
@@ -100,7 +103,6 @@ def get_us_stock_articles(n=3):
             if a_tag:
                 link = a_tag.get("href", "")
 
-        # 리다이렉트를 따라가 실제 기사 URL 획득
         if link:
             link = resolve_url(link)
 
@@ -110,10 +112,10 @@ def get_us_stock_articles(n=3):
 
 
 # ── 텔레그램 전송 ──────────────────────────────────────────────────
-def send_telegram(text: str) -> bool:
+def send_telegram(text: str, chat_id: str) -> bool:
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id": CHAT_ID,
+        "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
@@ -127,9 +129,14 @@ def main():
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"[{now_str}] 뉴스 수집 시작")
 
-    popular  = get_ranking_articles(section_id=None, n=7)  # 많이 본 뉴스 TOP 7
-    economy  = get_ranking_articles(section_id=101,  n=5)  # 경제 섹션 TOP 5
-    us_stock = get_us_stock_articles(n=3)                   # 미국 주식 뉴스 TOP 3
+    popular    = get_ranking_articles(section_id=None, n=7)   # 많이 본 뉴스 TOP 7
+    economy    = get_ranking_articles(section_id=101,  n=5)   # 경제 섹션 TOP 5
+    us_stock   = get_google_news_articles(                     # 미국 주식 뉴스 TOP 3
+        "미국 주식 OR 나스닥 OR S&P500 OR 다우존스 OR 뉴욕증시", n=3
+    )
+    intl_econ  = get_google_news_articles(                     # 국제경제/통상정책 TOP 5
+        "국제경제 OR 글로벌경제 OR 통상정책 OR 무역협정 OR 경제협력 OR 관세 OR FTA site:kr", n=5
+    )
 
     lines = []
     lines.append(f"<b>📢 뉴스 브리핑</b>  {now_str}")
@@ -159,9 +166,21 @@ def main():
     else:
         lines.append("미국 주식 관련 뉴스가 없습니다.")
 
+    # 국제경제/통상정책 뉴스 TOP 5
+    lines.append("")
+    lines.append("🌐 <b>국제경제/통상정책 뉴스 TOP 5</b>")
+    if intl_econ:
+        for i, art in enumerate(intl_econ, 1):
+            safe_title = html.escape(art["title"])
+            lines.append(f"{i}위. <a href='{art['link']}'>{safe_title}</a>")
+    else:
+        lines.append("국제경제/통상정책 관련 뉴스가 없습니다.")
+
     message = "\n".join(lines)
-    ok = send_telegram(message)
-    print(f"전송 {'완료' if ok else '실패'}")
+
+    for chat_id in CHAT_IDS:
+        ok = send_telegram(message, chat_id)
+        print(f"전송 {'완료' if ok else '실패'} → chat_id={chat_id}")
 
 
 if __name__ == "__main__":
