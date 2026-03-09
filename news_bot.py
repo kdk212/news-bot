@@ -17,7 +17,7 @@ from datetime import datetime
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8662493054:AAF8H6VpCBgdDdVtqVkUqjeVnSRgH9mi8ZA")
 CHAT_IDS = [
     os.environ.get("TELEGRAM_CHAT_ID", "694726450"),   # 개인
-    "-1003511255398",                                   # 그룹
+    "-5118782534",                                      # 뉴스 그룹
 ]
 
 HEADERS = {
